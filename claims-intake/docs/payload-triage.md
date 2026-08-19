@@ -6,20 +6,24 @@ Fill one row per payload. Where a payload is accepted, leave the rule, code, and
 
 ## Classification
 
-| Payload | Outcome | Rule | Code | Status |
-| --- | --- | --- | --- | --- |
-| EDGE-01 |  |  |  |  |
-| EDGE-02 |  |  |  |  |
-| EDGE-03 |  |  |  |  |
-| EDGE-04 |  |  |  |  |
-| EDGE-05 |  |  |  |  |
-| EDGE-06 |  |  |  |  |
-| EDGE-07 |  |  |  |  |
-| EDGE-08 |  |  |  |  |
-| EDGE-09 |  |  |  |  |
-| EDGE-10 |  |  |  |  |
-| EDGE-11 |  |  |  |  |
-| EDGE-12 |  |  |  |  |
+
+| Payload | Outcome | Rule | Code                    | Status |
+| ------- | ------- | ---- | ----------------------- | ------ |
+| EDGE-01 | Created | -    | Created                 | 201    |
+| EDGE-02 | Created | -    | Created                 | 201    |
+| EDGE-03 | Created | -    | Created                 | 201    |
+| EDGE-04 | refused | V-7  | `POLICY_CANCELLED`      | 422    |
+| EDGE-05 | refused | V-2  | `LOSS_BEFORE_INCEPTION` | 422    |
+| EDGE-06 | refused | V-4  | `AMOUNT_EXCEEDS_LIMIT`  | 422    |
+| EDGE-07 |         |      |                         |        |
+| EDGE-08 |         |      |                         |        |
+| EDGE-09 | refused | V-5  | `TYPE_NOT_COVERED`      | 422    |
+| EDGE-10 | refused | V-7  | `POLICY_CANCELLED`      | 422    |
+| EDGE-11 | refused | V-5  | `TYPE_NOT_COVERED`      | 422    |
+| EDGE-12 |         |      |                         |        |
+
+
+
 
 ## Decision log
 
@@ -29,7 +33,7 @@ A decision recorded here and nowhere else has not been made. Amend `docs/api-con
 
 ### Decision 1
 
-**Payload.**
+**Payload. -** EDGE-07
 
 **The ambiguity.** What the contract failed to determine, and the two readings that were both available.
 
@@ -43,7 +47,7 @@ A decision recorded here and nowhere else has not been made. Amend `docs/api-con
 
 ### Decision 2
 
-**Payload.**
+**Payload. -** EDGE-08
 
 **The ambiguity.**
 
@@ -57,7 +61,7 @@ A decision recorded here and nowhere else has not been made. Amend `docs/api-con
 
 ### Decision 3
 
-**Payload.**
+**Payload. -** EDGE-12
 
 **The ambiguity.**
 

@@ -77,16 +77,22 @@ A refused notification is never recorded and no claim reference is issued. There
 
 ### 4.1 Evaluation order
 
-Rules are evaluated in ascending identifier order. Evaluation stops at
-the first failure and that rule's code is returned. V-1 short circuits:
-if it fails, no rule that reads a policy field is evaluated.
+### 4.1 Evaluation order
+
+Rules are evaluated in the following order: V-6, V-1, V-2, V-7, V-3, V-4, V-5. Evaluation stops at the first rule that fails, and that rule's code is the only one returned to the caller.
+
+V-6 is evaluated first because it does not read a policy field; it compares the submitted values against past notifications. V-1 is evaluated next. V-1 short circuits: if it fails, no rule that reads a policy field is evaluated. 
+
+V-7 is evaluated before V-3 so that a policy that is both cancelled and past its original expiry is reported as cancelled (WI-0158, AC-4), rather than expired.
 
 ### 4.2 Rule table
 
 | ID  | Condition                                      | Code                    | Status |
 | --- | ---------------------------------------------- | ----------------------- | ------ |
+| V-6 | no existing recorded notification matches (`policy_number`, `loss_date`, `claim_type`) | `DUPLICATE_NOTIFICATION` | 409 |
 | V-1 | `policy_number` exists in the policy master    | `POLICY_NOT_FOUND`      | 422    |
 | V-2 | `loss_date` >= policy `effective_date`         | `LOSS_BEFORE_INCEPTION` | 422    |
+| V-7 | `cancellation_date` = null OR `loss_date` < `cancellation_date` | `POLICY_CANCELLED` | 422 |
 | V-3 | `loss_date` <= policy `expiry_date`            | `LOSS_AFTER_EXPIRY`     | 422    |
 | V-4 | `estimated_amount` <= policy `limit`           | `AMOUNT_EXCEEDS_LIMIT`  | 422    |
 | V-5 | `claim_type` permitted on the policy's product | `TYPE_NOT_COVERED`      | 422    |
@@ -97,3 +103,19 @@ covered (WI-0142, AC-3). An amount equal to the limit is within cover.
 ## 5. Error envelope
 
 ## 6. Status code mapping
+
+| Code | Status |
+| --- | --- |
+| `MALFORMED_REQUEST` | 400 |
+| `POLICY_NOT_FOUND` | 422 |
+| `LOSS_BEFORE_INCEPTION` | 422 |
+| `LOSS_AFTER_EXPIRY` | 422 |
+| `AMOUNT_EXCEEDS_LIMIT` | 422 |
+| `TYPE_NOT_COVERED` | 422 |
+| `DUPLICATE_NOTIFICATION` | 409 |
+| `POLICY_CANCELLED` | 422 |
+| `POLICY_MASTER_UNAVAILABLE` | 503 |
+| `POLICY_MASTER_TIMEOUT` | 504 |
+| `POLICY_MASTER_UNREADABLE` | 502 |
+
+All rule codes (V-1 through V-7) and malformed request return 4xx because the caller's data is what needs to change; retrying an identical payload will never approve. The three policy master conditions, unavailable, timeout, and unreadable return 5xx because none originate from anything wrong in the request; the same payload may approve if retried once the dependency recovers.
