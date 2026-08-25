@@ -10,7 +10,36 @@ Day 2 assignment. Implement these against `docs/api-contract.md` sections 2 and 
 
 from __future__ import annotations
 
-from pydantic import BaseModel
+from dataclasses import dataclass
+from datetime import date
+from decimal import Decimal
+from typing import Annotated, Any, Literal, NewType
+
+from pydantic import AfterValidator, BaseModel, BeforeValidator, ConfigDict, Field
+
+ClaimType = Literal["collision", "theft", "glass", "liability", "weather"]
+
+
+def _reject_float(value: Any) -> Any:
+    if type(value) is float:
+        raise ValueError("must not be a float")
+    return value
+
+
+def _two_places_greater_than_zero(value: Decimal) -> Decimal:
+    exponent = value.as_tuple().exponent
+    if not isinstance(exponent, int) or exponent != -2:
+        raise ValueError("must have exactly two decimal places")
+    if value <= 0:
+        raise ValueError("must be greater than zero")
+    return value
+
+
+EstimatedAmount = Annotated[
+    Decimal,
+    BeforeValidator(_reject_float),
+    AfterValidator(_two_places_greater_than_zero),
+]
 
 
 class NotificationRequest(BaseModel):
@@ -20,13 +49,15 @@ class NotificationRequest(BaseModel):
     is responsible for the shape of the request and for nothing else. Whether the
     policy exists, whether the loss falls inside the term, and whether the amount
     is within the limit are rules, and rules live in `service.py`.
-
-    `policy_number` is declared so that the V-1 rule in `service.py` has something
-    to read. Every other field, and every constraint on every field including this
-    one, is Day 2's work.
     """
 
-    policy_number: str
+    model_config = ConfigDict(extra="forbid")
+
+    policy_number: str = Field(min_length=1)
+    loss_date: date
+    claim_type: ClaimType
+    estimated_amount: EstimatedAmount
+    description: str | None = None
 
 
 class Policy(BaseModel):
@@ -34,9 +65,31 @@ class Policy(BaseModel):
 
     Built from the `PolicyRecord` the policy client returns. The fields the rules
     compare against are the reason this model exists.
-
-    Day 2 assignment: declare the fields.
     """
+
+    policy_number: str
+    product: str
+    effective_date: date
+    expiry_date: date
+    cancellation_date: date | None
+    limit: Decimal
+    permitted_claim_types: tuple[str, ...]
+
+
+RuleId = NewType("RuleId", str)
+ErrorCode = NewType("ErrorCode", str)
+
+
+@dataclass(frozen=True)
+class RuleFailure:
+    """A rule that failed, named by its id and the contract code it maps to.
+
+    `rule` and `code` are distinct types so a rule id cannot be passed where an
+    error code belongs.
+    """
+
+    rule: RuleId
+    code: ErrorCode
 
 
 class RecordedNotification(BaseModel):
@@ -44,6 +97,7 @@ class RecordedNotification(BaseModel):
 
     Carries the claim reference issued at the time it was recorded. Contract
     section 3 fixes the reference format.
-
-    Day 2 assignment: declare the fields.
     """
+
+    notification: NotificationRequest
+    claim_reference: str = Field(pattern=r"^CLM-\d{4}-\d{6}$")
