@@ -67,13 +67,18 @@ class Policy(BaseModel):
     compare against are the reason this model exists.
     """
 
-    policy_number: str
-    product: str
+    model_config = ConfigDict(extra="forbid")
+
+    policy_number: str = Field(min_length=1)
+    product: str = Field(min_length=1)
     effective_date: date
     expiry_date: date
     cancellation_date: date | None
-    limit: Decimal
-    permitted_claim_types: tuple[str, ...]
+    """Null means the policy was not cancelled (WI-0158, AC-3). A comparison
+    against this field without a None check is a type error under mypy.
+    """
+    limit: EstimatedAmount
+    permitted_claim_types: tuple[ClaimType, ...] = Field(min_length=1)
 
 
 RuleId = NewType("RuleId", str)
@@ -92,12 +97,16 @@ class RuleFailure:
     code: ErrorCode
 
 
-class RecordedNotification(BaseModel):
-    """A notification that passed every rule and was written.
-
-    Carries the claim reference issued at the time it was recorded. Contract
-    section 3 fixes the reference format.
+class ClaimRecord(BaseModel):
+    """
+    Duplicate matching (WI-0151) uses policy_number, loss_date, and claim_type.
+    claim_reference and status are the success response in contract section 3.
     """
 
-    notification: NotificationRequest
+    model_config = ConfigDict(extra="forbid")
+
     claim_reference: str = Field(pattern=r"^CLM-\d{4}-\d{6}$")
+    status: Literal["recorded"]
+    policy_number: str = Field(min_length=1)
+    loss_date: date
+    claim_type: ClaimType

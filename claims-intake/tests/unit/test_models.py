@@ -18,10 +18,10 @@ import pytest
 from pydantic import ValidationError
 
 from claims.models import (
+    ClaimRecord,
     ErrorCode,
     NotificationRequest,
     Policy,
-    RecordedNotification,
     RuleFailure,
     RuleId,
 )
@@ -37,19 +37,18 @@ def _payloads(filename: str) -> dict[str, dict[str, Any]]:
 _EDGE = _payloads("fnol_edge.json")
 _INVALID = _payloads("fnol_invalid.json")
 _VALID = _payloads("fnol_valid.json")
+_POLICIES = {
+    record["policy_number"]: record
+    for record in json.loads((_DATA / "policies.json").read_text())
+}
 
 _WELL_FORMED = _EDGE["EDGE-01"]
+_EDGE_POLICY = _POLICIES[_WELL_FORMED["policy_number"]]
 
 
 def _policy(*, cancellation_date: date | None = None) -> Policy:
-    return Policy(
-        policy_number="MOT-4497",
-        product="personal_auto_standard",
-        effective_date=date(2025, 6, 1),
-        expiry_date=date(2026, 5, 31),
-        cancellation_date=cancellation_date,
-        limit=Decimal("50000.00"),
-        permitted_claim_types=("collision", "theft", "glass", "liability", "weather"),
+    return Policy.model_validate(_EDGE_POLICY).model_copy(
+        update={"cancellation_date": cancellation_date}
     )
 
 
@@ -261,6 +260,55 @@ def test_policy_comparison_fields_use_rule_types(attr: str, expected_type: type)
     assert isinstance(getattr(_policy(), attr), expected_type)
 
 
+@pytest.mark.parametrize(
+    "payload",
+    [
+        pytest.param({**_EDGE_POLICY, "holder": "A. Smith"}, id="unknown_field"),
+        pytest.param(
+            {k: v for k, v in _EDGE_POLICY.items() if k != "policy_number"},
+            id="missing_policy_number",
+        ),
+        pytest.param(
+            {k: v for k, v in _EDGE_POLICY.items() if k != "cancellation_date"},
+            id="missing_cancellation_date",
+        ),
+        pytest.param({**_EDGE_POLICY, "policy_number": ""}, id="empty_policy_number"),
+        pytest.param({**_EDGE_POLICY, "product": ""}, id="empty_product"),
+        pytest.param(
+            {**_EDGE_POLICY, "effective_date": "06/01/2025"},
+            id="effective_date_not_iso",
+        ),
+        pytest.param(
+            {**_EDGE_POLICY, "cancellation_date": "01/15/2026"},
+            id="cancellation_date_not_iso",
+        ),
+        pytest.param({**_EDGE_POLICY, "limit": 50000.00}, id="limit_is_float"),
+        pytest.param({**_EDGE_POLICY, "limit": "0.00"}, id="limit_zero"),
+        pytest.param({**_EDGE_POLICY, "limit": "50000.999"}, id="limit_three_decimal_places"),
+        pytest.param(
+            {**_EDGE_POLICY, "permitted_claim_types": []},
+            id="empty_permitted_claim_types",
+        ),
+        pytest.param(
+            {**_EDGE_POLICY, "permitted_claim_types": ["flood"]},
+            id="claim_type_outside_vocabulary",
+        ),
+    ],
+)
+def test_policy_rejects_invalid_or_structurally_wrong_data(payload: dict[str, Any]) -> None:
+    """Invalid policy data is rejected the same way a bad request is rejected."""
+    with pytest.raises(ValidationError):
+        Policy.model_validate(payload)
+
+
+def test_policy_cancellation_date_null_means_not_cancelled() -> None:
+    """WI-0158 AC-3: null is not cancelled. The field is date | None, never a string."""
+    policy = Policy.model_validate(_EDGE_POLICY)
+    assert policy.cancellation_date is None
+    assert isinstance(policy.effective_date, date)
+    assert isinstance(policy.limit, Decimal)
+
+
 # --- RuleFailure: frozen, rule id and error code are distinct (contract 4.2, 5) ---
 
 
@@ -290,7 +338,7 @@ def test_rule_failure_is_frozen() -> None:
         failure.rule = RuleId("V-1")  # type: ignore[misc]
 
 
-# --- RecordedNotification: a saved notification plus its claim reference (contract 3) ---
+# --- ClaimRecord: recorded fields, not a wrapped request (contract 3) ---
 
 
 @pytest.mark.parametrize(
@@ -300,12 +348,24 @@ def test_rule_failure_is_frozen() -> None:
         pytest.param(_EDGE["EDGE-01"], "CLM-2026-000001", id="EDGE-01_recorded"),
     ],
 )
-def test_recorded_notification_carries_notification_and_reference(
+def test_claim_record_stores_recorded_fields_not_the_request(
     payload: dict[str, Any],
     claim_reference: str,
 ) -> None:
-    """The stored object is the notification plus claim_reference. Pattern CLM-YYYY-NNNNNN."""
+    """policy_number, loss_date, claim_type plus claim_reference and status."""
     notification = NotificationRequest.model_validate(payload)
-    record = RecordedNotification(notification=notification, claim_reference=claim_reference)
-    assert record.notification == notification
+    record = ClaimRecord(
+        claim_reference=claim_reference,
+        status="recorded",
+        policy_number=notification.policy_number,
+        loss_date=notification.loss_date,
+        claim_type=notification.claim_type,
+    )
     assert record.claim_reference == claim_reference
+    assert record.status == "recorded"
+    assert record.policy_number == notification.policy_number
+    assert record.loss_date == notification.loss_date
+    assert record.claim_type == notification.claim_type
+    assert not hasattr(record, "notification")
+    assert not hasattr(record, "description")
+    assert not hasattr(record, "estimated_amount")

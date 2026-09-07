@@ -109,7 +109,12 @@ def test_find_matching_requires_all_three_fields(
 ) -> None:
     """A difference in any one of the three fields is not a duplicate."""
     stored = repository.record(_request("VALID-01"))
-    lookup = stored.notification.model_dump()
+    lookup = {
+        "policy_number": stored.policy_number,
+        "loss_date": stored.loss_date,
+        "claim_type": stored.claim_type,
+        "estimated_amount": "4200.00",
+    }
     if changed == "policy_number":
         lookup["policy_number"] = "MOT-4472"
     elif changed == "loss_date":
