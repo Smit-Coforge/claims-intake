@@ -15,7 +15,7 @@ from typing import Any
 import pytest
 
 from claims.models import NotificationRequest
-from claims.policy_client import StubPolicyClient
+from claims.policy_client import LookupFailureReason, PolicyLookupFailed, StubPolicyClient
 from claims.repository import NotificationRepository
 from claims.service import ValidationOutcome, evaluate_notification
 
@@ -96,6 +96,27 @@ def test_v1_policy_number_exists(
     _assert_failed(outcome, "V-1", expected_code)
     assert outcome.detail["policy_number"] == _notification.policy_number
     assert outcome.code != "LOSS_BEFORE_INCEPTION"
+
+
+@pytest.mark.parametrize(
+    "reason",
+    [
+        pytest.param("timeout", id="timeout"),
+        pytest.param("unreachable", id="unreachable"),
+        pytest.param("unparsable", id="unparsable"),
+    ],
+)
+def test_policy_lookup_failed_is_not_caught(
+    repository: NotificationRepository,
+    reason: LookupFailureReason,
+) -> None:
+    """A master that did not answer is not V-1. reason is for the HTTP layer."""
+    policy_client = StubPolicyClient(fail_with=reason)
+    notification = NotificationRequest.model_validate(_VALID["VALID-01"])
+    with pytest.raises(PolicyLookupFailed) as raised:
+        evaluate_notification(notification, policy_client, repository)
+    assert raised.value.reason == reason
+    assert raised.value.policy_number == notification.policy_number
 
 
 # --- V-2: loss_date >= effective_date (WI-0142) ---
