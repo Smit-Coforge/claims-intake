@@ -451,6 +451,3 @@ def test_v7_loss_before_cancellation_or_not_cancelled(
     _assert_failed(outcome, "V-7", expected_code)
     assert outcome.detail["loss_date"] == notification.loss_date
     assert outcome.code != "LOSS_AFTER_EXPIRY"
-
-def test_deliberate_ci_failure() -> None:
-    assert False
