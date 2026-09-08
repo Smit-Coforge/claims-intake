@@ -2,8 +2,7 @@
 
 Each parametrized test is one behaviour. Cases pull from data/fnol_valid.json
 and data/fnol_invalid.json so a later reader can see which fixture is a
-recorded notification and which is a duplicate or a refusal that was never
-written.
+recorded claim and which is a duplicate or a refusal that was never written.
 """
 
 from __future__ import annotations
@@ -12,11 +11,11 @@ import json
 import re
 from datetime import UTC, date, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, get_type_hints
 
 import pytest
 
-from claims.models import NotificationRequest
+from claims.models import ClaimRecord, NotificationRequest
 from claims.repository import NotificationRepository
 
 _CLAIM_REFERENCE = re.compile(r"^CLM-\d{4}-\d{6}$")
@@ -37,7 +36,20 @@ def repository() -> NotificationRepository:
     return NotificationRepository()
 
 
-def _request(payload_id: str, source: dict[str, dict[str, Any]] = _VALID) -> NotificationRequest:
+def _record(
+    repository: NotificationRepository,
+    payload_id: str,
+    source: dict[str, dict[str, Any]] = _VALID,
+) -> ClaimRecord:
+    request = NotificationRequest.model_validate(source[payload_id])
+    return repository.record(
+        policy_number=request.policy_number,
+        loss_date=request.loss_date,
+        claim_type=request.claim_type,
+    )
+
+
+def _fields(payload_id: str, source: dict[str, dict[str, Any]] = _VALID) -> NotificationRequest:
     return NotificationRequest.model_validate(source[payload_id])
 
 
@@ -57,7 +69,7 @@ def test_record_issues_claim_reference_matching_contract(
     payload_id: str,
 ) -> None:
     """CLM-YYYY-NNNNNN. YYYY is the year the notification was recorded."""
-    recorded = repository.record(_request(payload_id))
+    recorded = _record(repository, payload_id)
     assert _CLAIM_REFERENCE.fullmatch(recorded.claim_reference)
     assert recorded.claim_reference.startswith(f"CLM-{datetime.now(UTC).date().year}-")
 
@@ -65,7 +77,7 @@ def test_record_issues_claim_reference_matching_contract(
 def test_no_two_records_share_a_reference(repository: NotificationRepository) -> None:
     """A claim reference is unique across all recorded notifications and is never reissued."""
     references = [
-        repository.record(_request(payload_id)).claim_reference
+        _record(repository, payload_id).claim_reference
         for payload_id in ("VALID-01", "VALID-02", "VALID-03", "VALID-04")
     ]
     assert len(references) == len(set(references))
@@ -88,8 +100,8 @@ def test_find_matching_returns_existing_record(
     lookup_source: dict[str, dict[str, Any]],
 ) -> None:
     """All three fields match an existing recorded notification."""
-    stored = repository.record(_request(recorded_id))
-    lookup = _request(lookup_id, lookup_source)
+    stored = _record(repository, recorded_id)
+    lookup = _fields(lookup_id, lookup_source)
     found = repository.find_matching(lookup.policy_number, lookup.loss_date, lookup.claim_type)
     assert found is stored
     assert found.claim_reference == stored.claim_reference
@@ -108,41 +120,35 @@ def test_find_matching_requires_all_three_fields(
     changed: str,
 ) -> None:
     """A difference in any one of the three fields is not a duplicate."""
-    stored = repository.record(_request("VALID-01"))
-    lookup = {
-        "policy_number": stored.policy_number,
-        "loss_date": stored.loss_date,
-        "claim_type": stored.claim_type,
-        "estimated_amount": "4200.00",
-    }
+    stored = _record(repository, "VALID-01")
+    policy_number = stored.policy_number
+    loss_date = stored.loss_date
+    claim_type = stored.claim_type
     if changed == "policy_number":
-        lookup["policy_number"] = "MOT-4472"
+        policy_number = "MOT-4472"
     elif changed == "loss_date":
-        lookup["loss_date"] = date(2026, 4, 3)
+        loss_date = date(2026, 4, 3)
     else:
-        lookup["claim_type"] = "theft"
-    other = NotificationRequest.model_validate(lookup)
-    assert (
-        repository.find_matching(other.policy_number, other.loss_date, other.claim_type) is None
-    )
+        claim_type = "theft"
+    assert repository.find_matching(policy_number, loss_date, claim_type) is None
 
 
-# --- WI-0151 AC-3: a refused submission was never written ---
+def test_record_does_not_accept_a_notification_request() -> None:
+    """record() takes ClaimRecord fields, not a NotificationRequest."""
+    hints = get_type_hints(NotificationRepository.record)
+    assert NotificationRequest not in hints.values()
+    assert hints["return"] is ClaimRecord
 
 
-@pytest.mark.parametrize(
-    "payload_id",
-    [
-        pytest.param("INVALID-02", id="INVALID-02_loss_before_inception_never_recorded"),
-        pytest.param("INVALID-06", id="INVALID-06_not_recorded_so_not_a_duplicate"),
-    ],
-)
-def test_unrecorded_notification_is_not_a_duplicate(
+def test_rejected_notification_is_never_recorded_and_cannot_be_duplicated(
     repository: NotificationRepository,
-    payload_id: str,
 ) -> None:
-    """Nothing was recorded, so there is nothing to duplicate. The repository was never called."""
-    refused = _request(payload_id, _INVALID)
+    """INVALID-02 is a NotificationRequest that rules would refuse.
+
+    record() does not take that type, so it cannot be written. A later lookup
+    of the same three fields finds nothing to duplicate (WI-0151 AC-3).
+    """
+    refused = NotificationRequest.model_validate(_INVALID["INVALID-02"])
     assert (
         repository.find_matching(refused.policy_number, refused.loss_date, refused.claim_type)
         is None

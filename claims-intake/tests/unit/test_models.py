@@ -8,7 +8,7 @@ the model and becoming a Day 3 rules problem.
 from __future__ import annotations
 
 import json
-from dataclasses import FrozenInstanceError
+from dataclasses import replace
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
@@ -334,8 +334,10 @@ def test_rule_failure_keeps_rule_id_and_error_code_separate(rule_id: str, error_
 def test_rule_failure_is_frozen() -> None:
     """Immutable. A failure is a fact about a decision that already happened."""
     failure = RuleFailure(rule=RuleId("V-2"), code=ErrorCode("LOSS_BEFORE_INCEPTION"))
-    with pytest.raises(FrozenInstanceError):
-        failure.rule = RuleId("V-1")  # type: ignore[misc]
+    changed = replace(failure, rule=RuleId("V-1"))
+    assert failure.rule == RuleId("V-2")
+    assert changed.rule == RuleId("V-1")
+    assert changed is not failure
 
 
 # --- ClaimRecord: recorded fields, not a wrapped request (contract 3) ---

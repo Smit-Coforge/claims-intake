@@ -72,3 +72,20 @@ A decision recorded here and nowhere else has not been made. Amend `docs/api-con
 **Rejected alternative.** Rounding to `3500.00` and creating, because the recorded amount would not be what the caller sent.
 
 **Contract amended.** Section 4.1: an `estimated_amount` with more than two decimal places is not well formed (`MALFORMED_REQUEST`, 400); the service does not round.
+
+## Reconciliation
+
+**Method.** Grepped all `raise` and error-code sites in `src/claims/models.py` and `src/claims/repository.py` (`MALFORMED_`, `POLICY_`, `LOSS_`, `AMOUNT_`, `TYPE_`, `DUPLICATE_`) and matched each against section 6.
+
+**Codes produced.**
+
+| Module | Code | Status in §6 |
+| --- | --- | --- |
+| `models.py` | `MALFORMED_REQUEST` | 400 |
+| `repository.py` | *(none — no `raise`, no code token)* | — |
+
+`models.py` raises `ValueError` / `ValidationError` when the body is not well formed. Sections 2.4 and 4.1 name that `MALFORMED_REQUEST`.
+
+**Already covered.** `MALFORMED_REQUEST` → 400.
+
+**Missing.** None. That row was already in section 6. No other contract code appears in those two files, so nothing was added.
