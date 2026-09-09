@@ -9,11 +9,13 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Generator
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from fastapi.testclient import TestClient
+from httpx import Response
 
 from claims.api import routes
 from claims.policy_client import LookupFailureReason, StubPolicyClient
@@ -38,7 +40,7 @@ _POLICIES = {
 
 
 @pytest.fixture
-def client() -> TestClient:
+def client() -> Generator[TestClient, None, None]:
     """Fresh repository, policy client, and TestClient for every test."""
     routes.repository = NotificationRepository()
     routes.policy_client = StubPolicyClient()
@@ -46,12 +48,12 @@ def client() -> TestClient:
         yield test_client
 
 
-def _post(client: TestClient, payload: dict[str, Any]):
-    return client.post("/notifications", json=payload)
+def _post(client: TestClient, payload: dict[str, Any]) -> Response:
+    return cast(Response, client.post("/notifications", json=payload))
 
 
 def _assert_error(
-    response,
+    response: Response,
     *,
     status: int,
     code: str,
@@ -59,7 +61,7 @@ def _assert_error(
     expect_rule: bool,
 ) -> dict[str, Any]:
     assert response.status_code == status
-    body = response.json()
+    body = cast(dict[str, Any], response.json())
     assert body["code"] == code
     assert "message" in body
     for key, value in detail.items():
