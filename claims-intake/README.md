@@ -5,10 +5,6 @@ master and the rule table in `docs/api-contract.md`, and either records a
 notification and issues a claim reference or refuses the submission with a
 specific reason.
 
-This README is incomplete. Completing it is part of the Day 4 lab, and the
-standard it is graded against is that a person who has never seen this repository
-can follow it to a running service.
-
 ## Where things are
 
 | Path | What it holds |
@@ -29,15 +25,42 @@ uname -sm     # Linux aarch64
 pwd           # /workspaces/claims-intake
 ```
 
-Dependencies are installed when the container is created. There is no install
-step in any assignment this week. If a tool you need is missing, that is a defect
-in the image specification and should be reported rather than worked around.
+Dependencies are already installed when the container is created (`uv sync` has
+already run). There is no install step. If a tool you need is missing, that is a
+defect in the image specification and should be reported rather than worked
+around.
+
+Work from the `claims-intake/` directory (where `pyproject.toml` lives).
+
+## Run the service
+
+Start the HTTP API with uvicorn:
+
+```
+uv run uvicorn claims.api.routes:app --host 0.0.0.0 --port 8000
+```
+
+The app listens on port 8000. Leave the process running while you call it.
+
+## Run checks
 
 ```
 uv run pytest
 uv run ruff check .
 uv run mypy
 ```
+
+## Build the container image
+
+From `claims-intake/` (the directory with the Dockerfile):
+
+```
+docker buildx build --platform linux/amd64 -t claims-intake .
+```
+
+This environment is Linux aarch64 (ARM). The assigned runtime expects a
+linux/amd64 image. Without `--platform linux/amd64`, Docker would build for ARM
+and the resulting image would not match that amd64 runtime.
 
 ## Data
 
