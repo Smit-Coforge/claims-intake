@@ -15,7 +15,7 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
-import claims.api.routes as routes
+from claims.api import routes
 from claims.policy_client import LookupFailureReason, StubPolicyClient
 from claims.repository import NotificationRepository
 
